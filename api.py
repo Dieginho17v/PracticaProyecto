@@ -5,7 +5,16 @@ from manager.CatalogManager import CatalogManager
 from manager.PedidoManager import PedidoManager
 from manager.RecopilacionManager import RecopilacionManager
 from dao import UsuarioDAO, CancionDAO, DiscoDAO, ViniloDAO, RecopilacionDAO, CancionRecopilacionDAO, CancionViniloDAO, PedidoDAO, DetallePedidoDAO, ValoracionDAO
+from dao.UsuarioDAO import UsuarioDAO
 from dao.CancionDAO import CancionDAO
+from dao.DiscoDAO import DiscoDAO
+from dao.ViniloDAO import ViniloDAO
+from dao.RecopilacionDAO import RecopilacionDAO
+from dao.CancionRecopilacionDAO import CancionRecopilacionDAO
+from dao.CancionViniloDAO import CancionViniloDAO
+from dao.PedidoDAO import PedidoDAO
+from dao.DetallePedidoDAO import DetallePedidoDAO
+from dao.ValoracionDAO import ValoracionDAO
 
 app = Flask(__name__)
 
