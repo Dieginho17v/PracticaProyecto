@@ -1,69 +1,85 @@
-from Datos import get_conn
+# dao/RecopilacionDAO.py
+from Datos import obtener_conexion
 
 class RecopilacionDAO:
 
     @staticmethod
-    def insertarRecopilacion(data):
-        with get_conn() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO recopilacion (nombre, publica, id_usuario)
-                VALUES (?, ?, ?)
-            """, (
-                data.get("nombre"),
-                int(data.get("publica", 0)),
-                data.get("id_usuario")
-            ))
-            conn.commit()
-            return cursor.lastrowid
+    def insertarRecopilacion(data, imagen=None):
+        conn = obtener_conexion()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO Recopilacion(nombre, descripcion, imagen_caratula)
+            VALUES (?, ?, ?)
+        """, (data["nombre"], data.get("descripcion"), imagen))
+        conn.commit()
+        return cursor.lastrowid
 
     @staticmethod
     def consultarRecopilaciones():
-        with get_conn() as conn:
-            cursor = conn.execute("SELECT * FROM recopilacion")
-            return [dict(row) for row in cursor.fetchall()]
+        conn = obtener_conexion()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id_recopilacion, nombre FROM Recopilacion")
+        return cursor.fetchall()
 
     @staticmethod
     def consultarRecopilacion(id_recopilacion):
-        with get_conn() as conn:
-            cursor = conn.execute(
-                "SELECT * FROM recopilacion WHERE id_recopilacion=?",
-                (id_recopilacion,)
-            )
-            row = cursor.fetchone()
-            return dict(row) if row else None
+        conn = obtener_conexion()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM Recopilacion WHERE id_recopilacion=?", (id_recopilacion,))
+        return cursor.fetchone()
 
     @staticmethod
-    def actualizarRecopilacion(id_recopilacion, data):
-        with get_conn() as conn:
-            conn.execute("""
-                UPDATE recopilacion
-                SET nombre=?, publica=?, id_usuario=?
-                WHERE id_recopilacion=?
-            """, (
-                data.get("nombre"),
-                int(data.get("publica", 0)),
-                data.get("id_usuario"),
-                id_recopilacion
-            ))
-            conn.commit()
+    def obtenerCaratula(id_recopilacion):
+        conn = obtener_conexion()
+        cursor = conn.cursor()
+        cursor.execute("SELECT imagen_caratula FROM Recopilacion WHERE id_recopilacion=?", (id_recopilacion,))
+        r = cursor.fetchone()
+        return r[0] if r else None
 
     @staticmethod
-    def actualizarRecopilacionParcial(id_recopilacion, data):
-        campos, valores = [], []
+    def actualizarRecopilacion(id_recopilacion, data, imagen=None):
+        conn = obtener_conexion()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE Recopilacion
+            SET nombre=?, descripcion=?, imagen_caratula=?
+            WHERE id_recopilacion=?
+        """, (
+            data["nombre"], data.get("descripcion"),
+            imagen, id_recopilacion
+        ))
+        conn.commit()
+        return cursor.rowcount
+
+    @staticmethod
+    def actualizarRecopilacionParcial(id_recopilacion, data, imagen=None):
+        conn = obtener_conexion()
+        cursor = conn.cursor()
+
+        campos = []
+        valores = []
+
         for k, v in data.items():
-            # Si el campo es 'publica', asegúrate de convertirlo a int (0 o 1)
-            if k == "publica":
-                v = int(v)
             campos.append(f"{k}=?")
             valores.append(v)
+
+        if imagen is not None:
+            campos.append("imagen_caratula=?")
+            valores.append(imagen)
+
         valores.append(id_recopilacion)
-        with get_conn() as conn:
-            conn.execute(f"UPDATE recopilacion SET {', '.join(campos)} WHERE id_recopilacion=?", valores)
-            conn.commit()
+
+        cursor.execute(
+            f"UPDATE Recopilacion SET {', '.join(campos)} WHERE id_recopilacion=?",
+            valores
+        )
+        conn.commit()
+        return cursor.rowcount
 
     @staticmethod
     def eliminarRecopilacion(id_recopilacion):
-        with get_conn() as conn:
-            conn.execute("DELETE FROM recopilacion WHERE id_recopilacion=?", (id_recopilacion,))
-            conn.commit()
+        conn = obtener_conexion()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM Recopilacion WHERE id_recopilacion=?", (id_recopilacion,))
+        conn.commit()
+        return cursor.rowcount
