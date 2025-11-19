@@ -1,39 +1,67 @@
-from Datos import get_conn
+# dao/UsuarioDAO.py
+from Datos import obtener_conexion
 
 class UsuarioDAO:
-    @staticmethod
-    def insertarUsuario(data):
-        with get_conn() as conn:
-            cur = conn.execute(
-                "INSERT INTO usuario(nombre, correo, contrasena, tipo_usuario) VALUES (?,?,?,?)",
-                (data["nombre"], data["correo"], data["contrasena"], data["tipo_usuario"])
-            )
-            conn.commit()
-            return cur.lastrowid
 
     @staticmethod
-    def consultarPorCorreo(correo):
-        with get_conn() as conn:
-            row = conn.execute("SELECT * FROM usuario WHERE correo = ?", (correo,)).fetchone()
-            return dict(row) if row else None
+    def insertarUsuario(data):
+        conn = obtener_conexion()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO Usuario(nombre, email, contrasena)
+            VALUES (?, ?, ?)
+        """, (data["nombre"], data["email"], data["contrasena"]))
+        conn.commit()
+        return cursor.lastrowid
+
+    @staticmethod
+    def consultarUsuarios():
+        conn = obtener_conexion()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM Usuario")
+        return cursor.fetchall()
 
     @staticmethod
     def consultarUsuario(id_usuario):
-        with get_conn() as conn:
-            row = conn.execute("SELECT * FROM usuario WHERE id_usuario = ?", (id_usuario,)).fetchone()
-            return dict(row) if row else None
+        conn = obtener_conexion()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM Usuario WHERE id_usuario = ?", (id_usuario,))
+        return cursor.fetchone()
 
     @staticmethod
     def actualizarUsuario(id_usuario, data):
-        with get_conn() as conn:
-            conn.execute(
-                "UPDATE usuario SET nombre=?, correo=?, contrasena=?, tipo_usuario=? WHERE id_usuario = ?",
-                (data["nombre"], data["correo"], data["contrasena"], data["tipo_usuario"], id_usuario)
-            )
-            conn.commit()
+        conn = obtener_conexion()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE Usuario SET nombre=?, email=?, contrasena=?
+            WHERE id_usuario=?
+        """, (data["nombre"], data["email"], data["contrasena"], id_usuario))
+        conn.commit()
+        return cursor.rowcount
+
+    @staticmethod
+    def actualizarUsuarioParcial(id_usuario, data):
+        conn = obtener_conexion()
+        cursor = conn.cursor()
+        campos = []
+        valores = []
+
+        for k, v in data.items():
+            campos.append(f"{k}=?")
+            valores.append(v)
+
+        valores.append(id_usuario)
+        cursor.execute(
+            f"UPDATE Usuario SET {', '.join(campos)} WHERE id_usuario=?",
+            valores
+        )
+        conn.commit()
+        return cursor.rowcount
 
     @staticmethod
     def eliminarUsuario(id_usuario):
-        with get_conn() as conn:
-            conn.execute("DELETE FROM usuario WHERE id_usuario = ?", (id_usuario,))
-            conn.commit()
+        conn = obtener_conexion()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM Usuario WHERE id_usuario=?", (id_usuario,))
+        conn.commit()
+        return cursor.rowcount
