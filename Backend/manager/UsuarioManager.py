@@ -1,18 +1,29 @@
+# manager/UsuarioManager.py
+
 from dao.UsuarioDAO import UsuarioDAO
 
 class UsuarioManager:
-    def registrarUsuario(self, data):
-        if not all(k in data for k in ("nombre", "correo", "contrasena", "tipo_usuario")):
-            raise ValueError("Faltan datos para registrar usuario")
-        if UsuarioDAO.consultarPorCorreo(data["correo"]):
-            raise ValueError("El correo ya está registrado")
+
+    @staticmethod
+    def crearUsuario(data):
         return UsuarioDAO.insertarUsuario(data)
 
-    def validarCredenciales(self, correo, contrasena):
-        usuario = UsuarioDAO.consultarPorCorreo(correo)
-        if usuario and usuario["contrasena"] == contrasena:
-            return usuario
-        return None
+    @staticmethod
+    def obtenerUsuarios():
+        return UsuarioDAO.consultarUsuarios()
 
-    def actualizarPerfil(self, id_usuario, data):
-        UsuarioDAO.actualizarUsuario(id_usuario, data)
+    @staticmethod
+    def obtenerUsuario(id_usuario):
+        return UsuarioDAO.consultarUsuario(id_usuario)
+
+    @staticmethod
+    def actualizarUsuario(id_usuario, data):
+        return UsuarioDAO.actualizarUsuario(id_usuario, data)
+
+    @staticmethod
+    def actualizarUsuarioParcial(id_usuario, data):
+        return UsuarioDAO.actualizarUsuarioParcial(id_usuario, data)
+
+    @staticmethod
+    def eliminarUsuario(id_usuario):
+        return UsuarioDAO.eliminarUsuario(id_usuario)
