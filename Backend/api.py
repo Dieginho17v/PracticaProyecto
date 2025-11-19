@@ -1,358 +1,628 @@
-from flask import Flask, request, jsonify
-from Datos import ensure_schema, get_conn
-from manager.UsuarioManager import UsuarioManager
+# api.py
+from flask import Flask, request, jsonify, send_file
+from io import BytesIO
+
+# Managers
 from manager.CatalogManager import CatalogManager
+from manager.UsuarioManager import UsuarioManager
 from manager.PedidoManager import PedidoManager
 from manager.RecopilacionManager import RecopilacionManager
-from dao import UsuarioDAO, CancionDAO, DiscoDAO, ViniloDAO, RecopilacionDAO, CancionRecopilacionDAO, CancionViniloDAO, PedidoDAO, DetallePedidoDAO, ValoracionDAO
-from dao.UsuarioDAO import UsuarioDAO
-from dao.CancionDAO import CancionDAO
-from dao.DiscoDAO import DiscoDAO
-from dao.ViniloDAO import ViniloDAO
-from dao.RecopilacionDAO import RecopilacionDAO
-from dao.CancionRecopilacionDAO import CancionRecopilacionDAO
-from dao.CancionViniloDAO import CancionViniloDAO
-from dao.PedidoDAO import PedidoDAO
-from dao.DetallePedidoDAO import DetallePedidoDAO
-from dao.ValoracionDAO import ValoracionDAO
 
 app = Flask(__name__)
 
-# Crear estructura de base de datos si no existe
-ensure_schema()
-
-# Instancias de managers
+catalog_mgr = CatalogManager()
 usuario_mgr = UsuarioManager()
-catalogo_mgr = CatalogManager()
 pedido_mgr = PedidoManager()
-recopilacion_mgr = RecopilacionManager()
+recop_mgr = RecopilacionManager()
 
+# -------------------------
+# Helpers
+# -------------------------
+def detect_image_mime(b: bytes) -> str:
+    if not b:
+        return "application/octet-stream"
+    if b.startswith(b'\xff\xd8'):
+        return "image/jpeg"
+    if b.startswith(b'\x89PNG'):
+        return "image/png"
+    # fallback
+    return "image/jpeg"
 
-# =========================================================
-#                     FUNCIONES AUXILIARES
-# =========================================================
-def actualizar_parcial(tabla, id_columna, id_valor, data):
-    """
-    Función genérica para PATCH parcial de cualquier tabla.
-    """
-    columnas = ", ".join([f"{col}=?" for col in data.keys()])
-    valores = list(data.values()) + [id_valor]
-    query = f"UPDATE {tabla} SET {columnas} WHERE {id_columna}=?"
-    with get_conn() as conn:
-        conn.execute(query, valores)
-        conn.commit()
-    return {"mensaje": f"{tabla} actualizada parcialmente"}
+def detect_audio_mime(b: bytes) -> str:
+    if not b:
+        return "application/octet-stream"
+    if b.startswith(b'ID3') or b[0:2] == b'\xff\xfb':
+        return "audio/mpeg"
+    if b.startswith(b'OggS'):
+        return "audio/ogg"
+    # fallback
+    return "application/octet-stream"
 
+def json_or_400():
+    data = None
+    try:
+        data = request.get_json(force=True)
+    except Exception:
+        return None
+    return data
 
-def eliminar_registro(tabla, id_columna, id_valor):
-    """
-    Función genérica para DELETE de cualquier tabla.
-    """
-    with get_conn() as conn:
-        conn.execute(f"DELETE FROM {tabla} WHERE {id_columna}=?", (id_valor,))
-        conn.commit()
-    return {"mensaje": f"{tabla} eliminada correctamente"}
+def respond_error(msg, code=400):
+    return jsonify({"error": str(msg)}), code
 
-
-# =========================================================
-#                     ENDPOINTS USUARIOS
-# =========================================================
+# -------------------------
+# USUARIOS
+# -------------------------
 @app.route("/usuarios", methods=["GET"])
-def get_usuarios():
-    usuarios = UsuarioDAO.consultarUsuarios() if hasattr(UsuarioDAO, "consultarUsuarios") else []
-    return jsonify(usuarios), 200
+def usuarios_get_all():
+    try:
+        datos = usuario_mgr.obtenerUsuarios()
+        # sqlite returns rows; ensure serializable -> convert to list of dicts if necessary
+        return jsonify([dict(row) if hasattr(row, "keys") else row for row in datos]), 200
+    except Exception as e:
+        return respond_error(e)
 
 @app.route("/usuarios/<int:id_usuario>", methods=["GET"])
-def get_usuario_por_id(id_usuario):
-    usuario = UsuarioDAO.consultarUsuario(id_usuario)
-    if usuario:
-        return jsonify(usuario), 200
-    return jsonify({"error": "Usuario no encontrado"}), 404
+def usuarios_get_by_id(id_usuario):
+    try:
+        u = usuario_mgr.obtenerUsuario(id_usuario)
+        if not u:
+            return respond_error("Usuario no encontrado", 404)
+        return jsonify(dict(u) if hasattr(u, "keys") else u), 200
+    except Exception as e:
+        return respond_error(e)
 
 @app.route("/usuarios", methods=["POST"])
-def post_usuario():
-    data = request.get_json()
+def usuarios_post():
+    data = json_or_400()
+    if data is None:
+        return respond_error("JSON inválido")
     try:
-        id_usuario = usuario_mgr.registrarUsuario(data)
-        return jsonify({"id_usuario": id_usuario}), 201
+        nuevo = usuario_mgr.crearUsuario(data)
+        return jsonify({"id_usuario": nuevo}), 201
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return respond_error(e)
 
 @app.route("/usuarios/<int:id_usuario>", methods=["PUT"])
-def put_usuario(id_usuario):
-    data = request.get_json()
+def usuarios_put(id_usuario):
+    data = json_or_400()
+    if data is None:
+        return respond_error("JSON inválido")
     try:
-        usuario_mgr.actualizarPerfil(id_usuario, data)
-        return jsonify({"mensaje": "Usuario actualizado completamente"}), 200
+        usuario_mgr.actualizarUsuario(id_usuario, data)
+        return jsonify({"mensaje": "Usuario actualizado"}), 200
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return respond_error(e)
 
 @app.route("/usuarios/<int:id_usuario>", methods=["PATCH"])
-def patch_usuario(id_usuario):
-    data = request.get_json()
-    return jsonify(actualizar_parcial("usuario", "id_usuario", id_usuario, data)), 200
+def usuarios_patch(id_usuario):
+    data = json_or_400()
+    if data is None:
+        return respond_error("JSON inválido")
+    try:
+        usuario_mgr.actualizarUsuarioParcial(id_usuario, data)
+        return jsonify({"mensaje": "Usuario actualizado parcialmente"}), 200
+    except Exception as e:
+        return respond_error(e)
 
 @app.route("/usuarios/<int:id_usuario>", methods=["DELETE"])
-def delete_usuario(id_usuario):
-    return jsonify(eliminar_registro("usuario", "id_usuario", id_usuario)), 200
-
-@app.route("/usuarios/login", methods=["POST"])
-def login_usuario():
-    data = request.get_json()
-    usuario = usuario_mgr.validarCredenciales(data.get("correo"), data.get("contrasena"))
-    if usuario:
-        return jsonify(usuario), 200
-    return jsonify({"error": "Credenciales inválidas"}), 401
-
-
-# =========================================================
-#                     ENDPOINTS CANCIONES
-# =========================================================
-@app.route("/canciones", methods=["GET"])
-def get_canciones():
-    nombre = request.args.get("nombre")
-    canciones = catalogo_mgr.buscarCancion(nombre)
-    return jsonify(canciones), 200
-
-@app.route("/canciones/<int:id_cancion>", methods=["GET"])
-def get_cancion_por_id(id_cancion):
-    cancion = CancionDAO.consultarCancion(id_cancion) if hasattr(CancionDAO, "consultarCancion") else None
-    if cancion:
-        return jsonify(cancion), 200
-    return jsonify({"error": "Canción no encontrada"}), 404
-
-@app.route("/canciones", methods=["POST"])
-def post_cancion():
-    data = request.get_json()
+def usuarios_delete(id_usuario):
     try:
-        id_cancion = CancionDAO.insertarCancion(data)
-        return jsonify({"id_cancion": id_cancion}), 201
+        usuario_mgr.eliminarUsuario(id_usuario)
+        return jsonify({"mensaje": "Usuario eliminado"}), 200
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return respond_error(e)
 
-@app.route("/canciones/<int:id_cancion>", methods=["PUT"])
-def put_cancion(id_cancion):
-    data = request.get_json()
-    try:
-        CancionDAO.actualizarCancion(id_cancion, data)
-        return jsonify({"mensaje": "Canción actualizada completamente"}), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
-
-@app.route("/canciones/<int:id_cancion>", methods=["PATCH"])
-def patch_cancion(id_cancion):
-    data = request.get_json()
-    return jsonify(actualizar_parcial("cancion", "id_cancion", id_cancion, data)), 200
-
-@app.route("/canciones/<int:id_cancion>", methods=["DELETE"])
-def delete_cancion(id_cancion):
-    return jsonify(eliminar_registro("cancion", "id_cancion", id_cancion)), 200
-
-
-# =========================================================
-#                     ENDPOINTS DISCOS
-# =========================================================
+# -------------------------
+# DISCOS MP3 (imagen_portada BLOB)
+# -------------------------
 @app.route("/discos", methods=["GET"])
-def get_discos():
-    from dao.DiscoDAO import DiscoDAO
-    discos = DiscoDAO.consultarDiscos()
-    return jsonify(discos), 200
+def discos_get_all():
+    try:
+        discos = catalog_mgr.obtenerDiscos()
+        return jsonify([dict(r) if hasattr(r, "keys") else r for r in discos]), 200
+    except Exception as e:
+        return respond_error(e)
 
 @app.route("/discos/<int:id_disco>", methods=["GET"])
-def get_disco_por_id(id_disco):
-    with get_conn() as conn:
-        row = conn.execute("SELECT * FROM disco WHERE id_disco=?", (id_disco,)).fetchone()
-        if row:
-            return jsonify(dict(row)), 200
-        return jsonify({"error": "Disco no encontrado"}), 404
+def discos_get_by_id(id_disco):
+    try:
+        d = catalog_mgr.obtenerDisco(id_disco)
+        if not d:
+            return respond_error("Disco no encontrado", 404)
+        return jsonify(dict(d) if hasattr(d, "keys") else d), 200
+    except Exception as e:
+        return respond_error(e)
 
+@app.route("/discos/<int:id_disco>/imagen", methods=["GET"])
+def discos_get_imagen(id_disco):
+    try:
+        blob = catalog_mgr.obtenerPortada(id_disco)
+        if not blob:
+            return respond_error("Imagen no encontrada", 404)
+        mimetype = detect_image_mime(blob)
+        return send_file(BytesIO(blob), mimetype=mimetype)
+    except Exception as e:
+        return respond_error(e)
+
+# Create disco (form-data) -> keys: nombre (text), genero (text), imagen (file optional)
 @app.route("/discos", methods=["POST"])
-def post_disco():
-    data = request.get_json()
-    from dao.DiscoDAO import DiscoDAO
-    id_disco = DiscoDAO.insertarDisco(data)
-    return jsonify({"id_disco": id_disco}), 201
+def discos_post():
+    try:
+        data = request.form.to_dict()
+        imagen = request.files.get("imagen")
+        portada = imagen.read() if imagen else None
+        nuevo = catalog_mgr.crearDisco(data, portada)
+        return jsonify({"id_disco": nuevo}), 201
+    except Exception as e:
+        return respond_error(e)
 
 @app.route("/discos/<int:id_disco>", methods=["PUT"])
-def put_disco(id_disco):
-    data = request.get_json()
-    actualizar_parcial("disco", "id_disco", id_disco, data)
-    return jsonify({"mensaje": "Disco actualizado"}), 200
+def discos_put(id_disco):
+    try:
+        data = request.form.to_dict()
+        imagen = request.files.get("imagen")
+        portada = imagen.read() if imagen else None
+        catalog_mgr.actualizarDisco(id_disco, data, portada)
+        return jsonify({"mensaje": "Disco actualizado"}), 200
+    except Exception as e:
+        return respond_error(e)
 
 @app.route("/discos/<int:id_disco>", methods=["PATCH"])
-def patch_disco(id_disco):
-    data = request.get_json()
-    return jsonify(actualizar_parcial("disco", "id_disco", id_disco, data)), 200
+def discos_patch(id_disco):
+    try:
+        data = request.form.to_dict()
+        imagen = request.files.get("imagen")
+        portada = imagen.read() if imagen else None
+        catalog_mgr.actualizarDiscoParcial(id_disco, data, portada)
+        return jsonify({"mensaje": "Disco actualizado parcialmente"}), 200
+    except Exception as e:
+        return respond_error(e)
 
 @app.route("/discos/<int:id_disco>", methods=["DELETE"])
-def delete_disco(id_disco):
-    return jsonify(eliminar_registro("disco", "id_disco", id_disco)), 200
+def discos_delete(id_disco):
+    try:
+        catalog_mgr.eliminarDisco(id_disco)
+        return jsonify({"mensaje": "Disco eliminado"}), 200
+    except Exception as e:
+        return respond_error(e)
 
+# -------------------------
+# CANCIONES (audio_blob)
+# -------------------------
+@app.route("/canciones", methods=["GET"])
+def canciones_get_all():
+    try:
+        canciones = catalog_mgr.obtenerCanciones()
+        return jsonify([dict(r) if hasattr(r, "keys") else r for r in canciones]), 200
+    except Exception as e:
+        return respond_error(e)
 
-# =========================================================
-#                     ENDPOINTS VINILOS
-# =========================================================
+@app.route("/canciones/<int:id_cancion>", methods=["GET"])
+def canciones_get_by_id(id_cancion):
+    try:
+        c = catalog_mgr.obtenerCancion(id_cancion)
+        if not c:
+            return respond_error("Canción no encontrada", 404)
+        return jsonify(dict(c) if hasattr(c, "keys") else c), 200
+    except Exception as e:
+        return respond_error(e)
+
+@app.route("/canciones/<int:id_cancion>/audio", methods=["GET"])
+def canciones_get_audio(id_cancion):
+    try:
+        blob = catalog_mgr.obtenerAudioCancion(id_cancion)
+        if not blob:
+            return respond_error("Audio no encontrado", 404)
+        mimetype = detect_audio_mime(blob)
+        return send_file(BytesIO(blob), mimetype=mimetype)
+    except Exception as e:
+        return respond_error(e)
+
+# Create song -> form-data: nombre, duracion, tamaño_mb, calidad_kbps, id_disco, audio(file)
+@app.route("/canciones", methods=["POST"])
+def canciones_post():
+    try:
+        data = request.form.to_dict()
+        audio_file = request.files.get("audio")
+        audio_blob = audio_file.read() if audio_file else None
+        nuevo = catalog_mgr.crearCancion(data, audio_blob)
+        return jsonify({"id_cancion": nuevo}), 201
+    except Exception as e:
+        return respond_error(e)
+
+@app.route("/canciones/<int:id_cancion>", methods=["PUT"])
+def canciones_put(id_cancion):
+    try:
+        data = request.form.to_dict()
+        audio_file = request.files.get("audio")
+        audio_blob = audio_file.read() if audio_file else None
+        catalog_mgr.actualizarCancion(id_cancion, data, audio_blob)
+        return jsonify({"mensaje": "Canción actualizada"}), 200
+    except Exception as e:
+        return respond_error(e)
+
+@app.route("/canciones/<int:id_cancion>", methods=["PATCH"])
+def canciones_patch(id_cancion):
+    try:
+        data = request.form.to_dict()
+        audio_file = request.files.get("audio")
+        audio_blob = audio_file.read() if audio_file else None
+        catalog_mgr.actualizarCancionParcial(id_cancion, data, audio_blob)
+        return jsonify({"mensaje": "Canción actualizada parcialmente"}), 200
+    except Exception as e:
+        return respond_error(e)
+
+@app.route("/canciones/<int:id_cancion>", methods=["DELETE"])
+def canciones_delete(id_cancion):
+    try:
+        catalog_mgr.eliminarCancion(id_cancion)
+        return jsonify({"mensaje": "Canción eliminada"}), 200
+    except Exception as e:
+        return respond_error(e)
+
+# -------------------------
+# VINILOS (caratula BLOB)
+# -------------------------
 @app.route("/vinilos", methods=["GET"])
-def get_vinilos():
-    from dao.ViniloDAO import ViniloDAO
-    vinilos = ViniloDAO.consultarVinilos()
-    return jsonify(vinilos), 200
+def vinilos_get_all():
+    try:
+        vinilos = catalog_mgr.obtenerVinilos()
+        return jsonify([dict(r) if hasattr(r, "keys") else r for r in vinilos]), 200
+    except Exception as e:
+        return respond_error(e)
 
 @app.route("/vinilos/<int:id_vinilo>", methods=["GET"])
-def get_vinilo_por_id(id_vinilo):
-    with get_conn() as conn:
-        row = conn.execute("SELECT * FROM vinilo WHERE id_vinilo=?", (id_vinilo,)).fetchone()
-        if row:
-            return jsonify(dict(row)), 200
-        return jsonify({"error": "Vinilo no encontrado"}), 404
+def vinilos_get_by_id(id_vinilo):
+    try:
+        v = catalog_mgr.obtenerVinilo(id_vinilo)
+        if not v:
+            return respond_error("Vinilo no encontrado", 404)
+        return jsonify(dict(v) if hasattr(v, "keys") else v), 200
+    except Exception as e:
+        return respond_error(e)
 
+@app.route("/vinilos/<int:id_vinilo>/caratula", methods=["GET"])
+def vinilos_get_caratula(id_vinilo):
+    try:
+        blob = catalog_mgr.obtenerCaratulaVinilo(id_vinilo)
+        if not blob:
+            return respond_error("Carátula no encontrada", 404)
+        mimetype = detect_image_mime(blob)
+        return send_file(BytesIO(blob), mimetype=mimetype)
+    except Exception as e:
+        return respond_error(e)
+
+# create vinilo (form-data): nombre, rpm, caratula(file)
 @app.route("/vinilos", methods=["POST"])
-def post_vinilo():
-    data = request.get_json()
-    from dao.ViniloDAO import ViniloDAO
-    id_vinilo = ViniloDAO.insertarVinilo(data)
-    return jsonify({"id_vinilo": id_vinilo}), 201
+def vinilos_post():
+    try:
+        data = request.form.to_dict()
+        caratula_file = request.files.get("caratula")
+        caratula = caratula_file.read() if caratula_file else None
+        nuevo = catalog_mgr.crearVinilo(data, caratula)
+        return jsonify({"id_vinilo": nuevo}), 201
+    except Exception as e:
+        return respond_error(e)
 
 @app.route("/vinilos/<int:id_vinilo>", methods=["PUT"])
-def put_vinilo(id_vinilo):
-    data = request.get_json()
-    actualizar_parcial("vinilo", "id_vinilo", id_vinilo, data)
-    return jsonify({"mensaje": "Vinilo actualizado"}), 200
+def vinilos_put(id_vinilo):
+    try:
+        data = request.form.to_dict()
+        caratula_file = request.files.get("caratula")
+        caratula = caratula_file.read() if caratula_file else None
+        catalog_mgr.actualizarVinilo(id_vinilo, data, caratula)
+        return jsonify({"mensaje": "Vinilo actualizado"}), 200
+    except Exception as e:
+        return respond_error(e)
 
 @app.route("/vinilos/<int:id_vinilo>", methods=["PATCH"])
-def patch_vinilo(id_vinilo):
-    data = request.get_json()
-    return jsonify(actualizar_parcial("vinilo", "id_vinilo", id_vinilo, data)), 200
+def vinilos_patch(id_vinilo):
+    try:
+        data = request.form.to_dict()
+        caratula_file = request.files.get("caratula")
+        caratula = caratula_file.read() if caratula_file else None
+        catalog_mgr.actualizarViniloParcial(id_vinilo, data, caratula)
+        return jsonify({"mensaje": "Vinilo actualizado parcialmente"}), 200
+    except Exception as e:
+        return respond_error(e)
 
 @app.route("/vinilos/<int:id_vinilo>", methods=["DELETE"])
-def delete_vinilo(id_vinilo):
-    return jsonify(eliminar_registro("vinilo", "id_vinilo", id_vinilo)), 200
+def vinilos_delete(id_vinilo):
+    try:
+        catalog_mgr.eliminarVinilo(id_vinilo)
+        return jsonify({"mensaje": "Vinilo eliminado"}), 200
+    except Exception as e:
+        return respond_error(e)
 
-
-# =========================================================
-#         ENDPOINTS PARA RECOPILACIONES Y RELACIONES
-# =========================================================
+# -------------------------
+# RECOPILACIONES & CANCION-RECO
+# -------------------------
 @app.route("/recopilaciones", methods=["GET"])
-def get_recopilaciones():
-    recopilaciones = RecopilacionDAO.consultarRecopilaciones()
-    return jsonify(recopilaciones), 200
+def recop_get_all():
+    try:
+        recos = recop_mgr.obtenerRecopilaciones()
+        return jsonify([dict(r) if hasattr(r, "keys") else r for r in recos]), 200
+    except Exception as e:
+        return respond_error(e)
 
-@app.route("/recopilaciones/<int:id_recopilacion>", methods=["GET"])
-def get_recopilacion_por_id(id_recopilacion):
-    recopilacion = RecopilacionDAO.obtenerPorId(id_recopilacion)
-    if recopilacion:
-        return jsonify(recopilacion), 200
-    return jsonify({"error": "Recopilación no encontrada"}), 404
+@app.route("/recopilaciones/<int:id_reco>", methods=["GET"])
+def recop_get_by_id(id_reco):
+    try:
+        r = recop_mgr.obtenerRecopilacion(id_reco)
+        if not r:
+            return respond_error("Recopilacion no encontrada", 404)
+        return jsonify(dict(r) if hasattr(r, "keys") else r), 200
+    except Exception as e:
+        return respond_error(e)
 
+@app.route("/recopilaciones/<int:id_reco>/caratula", methods=["GET"])
+def recop_get_caratula(id_reco):
+    try:
+        blob = recop_mgr.obtenerCaratula(id_reco)
+        if not blob:
+            return respond_error("Carátula no encontrada", 404)
+        mimetype = detect_image_mime(blob)
+        return send_file(BytesIO(blob), mimetype=mimetype)
+    except Exception as e:
+        return respond_error(e)
+
+# create recop (form-data): nombre, descripcion, imagen(file)
 @app.route("/recopilaciones", methods=["POST"])
-def post_recopilacion():
-    data = request.get_json()
-    id_recopilacion = recopilacion_mgr.crearRecopilacion(data)
-    return jsonify({"id_recopilacion": id_recopilacion}), 201
+def recop_post():
+    try:
+        data = request.form.to_dict()
+        imagen_file = request.files.get("imagen")
+        imagen = imagen_file.read() if imagen_file else None
+        nuevo = recop_mgr.crearRecopilacion(data, imagen)
+        return jsonify({"id_recopilacion": nuevo}), 201
+    except Exception as e:
+        return respond_error(e)
 
-@app.route("/recopilaciones/<int:id_recopilacion>", methods=["PUT"])
-def put_recopilacion(id_recopilacion):
-    data = request.get_json()
-    actualizar_parcial("recopilacion", "id_recopilacion", id_recopilacion, data)
-    return jsonify({"mensaje": "Recopilación actualizada"}), 200
+@app.route("/recopilaciones/<int:id_reco>", methods=["PUT"])
+def recop_put(id_reco):
+    try:
+        data = request.form.to_dict()
+        imagen_file = request.files.get("imagen")
+        imagen = imagen_file.read() if imagen_file else None
+        recop_mgr.actualizarRecopilacion(id_reco, data, imagen)
+        return jsonify({"mensaje": "Recopilación actualizada"}), 200
+    except Exception as e:
+        return respond_error(e)
 
-@app.route("/recopilaciones/<int:id_recopilacion>", methods=["PATCH"])
-def patch_recopilacion(id_recopilacion):
-    data = request.get_json()
-    return jsonify(actualizar_parcial("recopilacion", "id_recopilacion", id_recopilacion, data)), 200
+@app.route("/recopilaciones/<int:id_reco>", methods=["PATCH"])
+def recop_patch(id_reco):
+    try:
+        data = request.form.to_dict()
+        imagen_file = request.files.get("imagen")
+        imagen = imagen_file.read() if imagen_file else None
+        recop_mgr.actualizarRecopilacionParcial(id_reco, data, imagen)
+        return jsonify({"mensaje": "Recopilación actualizada parcialmente"}), 200
+    except Exception as e:
+        return respond_error(e)
 
-@app.route("/recopilaciones/<int:id_recopilacion>", methods=["DELETE"])
-def delete_recopilacion(id_recopilacion):
-    return jsonify(eliminar_registro("recopilacion", "id_recopilacion", id_recopilacion)), 200
+@app.route("/recopilaciones/<int:id_reco>", methods=["DELETE"])
+def recop_delete(id_reco):
+    try:
+        recop_mgr.eliminarRecopilacion(id_reco)
+        return jsonify({"mensaje": "Recopilación eliminada"}), 200
+    except Exception as e:
+        return respond_error(e)
 
-@app.route("/recopilaciones/<int:id_recopilacion>/canciones", methods=["POST"])
-def post_recopilacion_canciones(id_recopilacion):
-    data = request.get_json()
-    canciones = data.get("canciones", [])
-    recopilacion_mgr.asociarCanciones(id_recopilacion, canciones)
-    return jsonify({"mensaje": "Canciones asociadas"}), 200
+# Canciones de una recopilacion
+@app.route("/recopilaciones/<int:id_reco>/canciones", methods=["GET"])
+def recop_canciones_get(id_reco):
+    try:
+        canciones = recop_mgr.obtenerCancionesDeRecopilacion(id_reco)
+        return jsonify([dict(r) if hasattr(r, "keys") else r for r in canciones]), 200
+    except Exception as e:
+        return respond_error(e)
 
+@app.route("/recopilaciones/<int:id_reco>/canciones", methods=["POST"])
+def recop_canciones_post(id_reco):
+    try:
+        # Accept JSON: {"id_cancion": X} or form-data
+        data = request.get_json(silent=True) or request.form.to_dict()
+        id_cancion = data.get("id_cancion") or data.get("idCancion") or data.get("id")
+        if not id_cancion:
+            return respond_error("Falta id_cancion en el body")
+        recop_mgr.agregarCancionARecopilacion(int(id_cancion), id_reco)
+        return jsonify({"mensaje": "Canción asociada"}), 201
+    except Exception as e:
+        return respond_error(e)
 
-# =========================================================
-#                     ENDPOINTS PEDIDOS
-# =========================================================
+@app.route("/recopilaciones/<int:id_reco>/canciones/<int:id_cancion>", methods=["DELETE"])
+def recop_canciones_delete(id_reco, id_cancion):
+    try:
+        recop_mgr.eliminarCancionDeRecopilacion(id_cancion, id_reco)
+        return jsonify({"mensaje": "Canción eliminada de la recopilación"}), 200
+    except Exception as e:
+        return respond_error(e)
+
+# -------------------------
+# PEDIDOS / PRODUCTOS / VALORACIONES
+# -------------------------
+# PEDIDOS
 @app.route("/pedidos", methods=["GET"])
-def get_pedidos():
-    pedidos = PedidoDAO.consultarPedidos()
-    return jsonify(pedidos), 200
+def pedidos_get_all():
+    try:
+        pedidos = pedido_mgr.obtenerPedidos()
+        return jsonify([dict(r) if hasattr(r, "keys") else r for r in pedidos]), 200
+    except Exception as e:
+        return respond_error(e)
 
 @app.route("/pedidos/<int:id_pedido>", methods=["GET"])
-def get_pedido_por_id(id_pedido):
-    with get_conn() as conn:
-        row = conn.execute("SELECT * FROM pedido WHERE id_pedido=?", (id_pedido,)).fetchone()
-        if row:
-            return jsonify(dict(row)), 200
-        return jsonify({"error": "Pedido no encontrado"}), 404
+def pedidos_get_by_id(id_pedido):
+    try:
+        p = pedido_mgr.obtenerPedido(id_pedido)
+        if not p:
+            return respond_error("Pedido no encontrado", 404)
+        return jsonify(dict(p) if hasattr(p, "keys") else p), 200
+    except Exception as e:
+        return respond_error(e)
 
 @app.route("/pedidos", methods=["POST"])
-def post_pedido():
-    data = request.get_json()
-    pedido = data.get("pedido")
-    detalles = data.get("detalles", [])
-    id_pedido = pedido_mgr.crearPedido(pedido, detalles)
-    return jsonify({"id_pedido": id_pedido}), 201
+def pedidos_post():
+    try:
+        data = json_or_400()
+        if data is None:
+            return respond_error("JSON inválido")
+        nuevo = pedido_mgr.crearPedido(data)
+        return jsonify({"id_pedido": nuevo}), 201
+    except Exception as e:
+        return respond_error(e)
 
 @app.route("/pedidos/<int:id_pedido>", methods=["PUT"])
-def put_pedido(id_pedido):
-    data = request.get_json()
-    pedido_mgr.cambiarEstado(id_pedido, data.get("estado"))
-    return jsonify({"mensaje": "Estado actualizado"}), 200
+def pedidos_put(id_pedido):
+    try:
+        data = json_or_400()
+        if data is None:
+            return respond_error("JSON inválido")
+        pedido_mgr.actualizarPedido(id_pedido, data)
+        return jsonify({"mensaje": "Pedido actualizado"}), 200
+    except Exception as e:
+        return respond_error(e)
 
 @app.route("/pedidos/<int:id_pedido>", methods=["PATCH"])
-def patch_pedido(id_pedido):
-    data = request.get_json()
-    return jsonify(actualizar_parcial("pedido", "id_pedido", id_pedido, data)), 200
+def pedidos_patch(id_pedido):
+    try:
+        data = json_or_400()
+        if data is None:
+            return respond_error("JSON inválido")
+        pedido_mgr.actualizarPedidoParcial(id_pedido, data)
+        return jsonify({"mensaje": "Pedido actualizado parcialmente"}), 200
+    except Exception as e:
+        return respond_error(e)
 
 @app.route("/pedidos/<int:id_pedido>", methods=["DELETE"])
-def delete_pedido(id_pedido):
-    return jsonify(eliminar_registro("pedido", "id_pedido", id_pedido)), 200
+def pedidos_delete(id_pedido):
+    try:
+        pedido_mgr.eliminarPedido(id_pedido)
+        return jsonify({"mensaje": "Pedido eliminado"}), 200
+    except Exception as e:
+        return respond_error(e)
 
-@app.route("/pedidos/<int:id_pedido>/valoracion", methods=["POST"])
-def post_valoracion(id_pedido):
-    data = request.get_json()
-    data["pedido_id_pedido"] = id_pedido
-    id_val = pedido_mgr.agregarValoracion(data)
-    return jsonify({"id_valoracion": id_val}), 201
+# PRODUCTOS
+@app.route("/productos", methods=["GET"])
+def productos_get_all():
+    try:
+        prods = pedido_mgr.obtenerProductos()
+        return jsonify([dict(r) if hasattr(r, "keys") else r for r in prods]), 200
+    except Exception as e:
+        return respond_error(e)
 
-@app.route("/pedidos/reporte", methods=["GET"])
-def get_reporte():
-    reporte = pedido_mgr.generarReporte()
-    return jsonify(reporte), 200
+@app.route("/productos/<int:id_producto>", methods=["GET"])
+def productos_get_by_id(id_producto):
+    try:
+        p = pedido_mgr.obtenerProducto(id_producto)
+        if not p:
+            return respond_error("Producto no encontrado", 404)
+        return jsonify(dict(p) if hasattr(p, "keys") else p), 200
+    except Exception as e:
+        return respond_error(e)
 
+@app.route("/productos", methods=["POST"])
+def productos_post():
+    try:
+        data = json_or_400()
+        if data is None:
+            return respond_error("JSON inválido")
+        nuevo = pedido_mgr.crearProducto(data)
+        return jsonify({"id_producto": nuevo}), 201
+    except Exception as e:
+        return respond_error(e)
 
-# =========================================================
-#                    VALORACIONES
-# =========================================================
+@app.route("/productos/<int:id_producto>", methods=["PUT"])
+def productos_put(id_producto):
+    try:
+        data = json_or_400()
+        if data is None:
+            return respond_error("JSON inválido")
+        pedido_mgr.actualizarProducto(id_producto, data)
+        return jsonify({"mensaje": "Producto actualizado"}), 200
+    except Exception as e:
+        return respond_error(e)
+
+@app.route("/productos/<int:id_producto>", methods=["PATCH"])
+def productos_patch(id_producto):
+    try:
+        data = json_or_400()
+        if data is None:
+            return respond_error("JSON inválido")
+        pedido_mgr.actualizarProductoParcial(id_producto, data)
+        return jsonify({"mensaje": "Producto actualizado parcialmente"}), 200
+    except Exception as e:
+        return respond_error(e)
+
+@app.route("/productos/<int:id_producto>", methods=["DELETE"])
+def productos_delete(id_producto):
+    try:
+        pedido_mgr.eliminarProducto(id_producto)
+        return jsonify({"mensaje": "Producto eliminado"}), 200
+    except Exception as e:
+        return respond_error(e)
+
+# VALORACIONES
 @app.route("/valoraciones", methods=["GET"])
-def get_valoraciones():
-    valoraciones = ValoracionDAO.consultarValoraciones()
-    return jsonify(valoraciones), 200
+def valoraciones_get_all():
+    try:
+        vals = pedido_mgr.obtenerValoraciones()
+        return jsonify([dict(r) if hasattr(r, "keys") else r for r in vals]), 200
+    except Exception as e:
+        return respond_error(e)
 
 @app.route("/valoraciones/<int:id_valoracion>", methods=["GET"])
-def get_valoracion_por_id(id_valoracion):
-    with get_conn() as conn:
-        row = conn.execute("SELECT * FROM valoracion WHERE id_valoracion=?", (id_valoracion,)).fetchone()
-        if row:
-            return jsonify(dict(row)), 200
-        return jsonify({"error": "Valoración no encontrada"}), 404
+def valoraciones_get_by_id(id_valoracion):
+    try:
+        v = pedido_mgr.obtenerValoracion(id_valoracion)
+        if not v:
+            return respond_error("Valoración no encontrada", 404)
+        return jsonify(dict(v) if hasattr(v, "keys") else v), 200
+    except Exception as e:
+        return respond_error(e)
+
+@app.route("/valoraciones", methods=["POST"])
+def valoraciones_post():
+    try:
+        data = json_or_400()
+        if data is None:
+            return respond_error("JSON inválido")
+        nuevo = pedido_mgr.crearValoracion(data)
+        return jsonify({"id_valoracion": nuevo}), 201
+    except Exception as e:
+        return respond_error(e)
+
+@app.route("/valoraciones/<int:id_valoracion>", methods=["PUT"])
+def valoraciones_put(id_valoracion):
+    try:
+        data = json_or_400()
+        if data is None:
+            return respond_error("JSON inválido")
+        pedido_mgr.actualizarValoracion(id_valoracion, data)
+        return jsonify({"mensaje": "Valoración actualizada"}), 200
+    except Exception as e:
+        return respond_error(e)
 
 @app.route("/valoraciones/<int:id_valoracion>", methods=["PATCH"])
-def patch_valoracion(id_valoracion):
-    data = request.get_json()
-    return jsonify(actualizar_parcial("valoracion", "id_valoracion", id_valoracion, data)), 200
+def valoraciones_patch(id_valoracion):
+    try:
+        data = json_or_400()
+        if data is None:
+            return respond_error("JSON inválido")
+        pedido_mgr.actualizarValoracionParcial(id_valoracion, data)
+        return jsonify({"mensaje": "Valoración actualizada parcialmente"}), 200
+    except Exception as e:
+        return respond_error(e)
 
 @app.route("/valoraciones/<int:id_valoracion>", methods=["DELETE"])
-def delete_valoracion(id_valoracion):
-    return jsonify(eliminar_registro("valoracion", "id_valoracion", id_valoracion)), 200
+def valoraciones_delete(id_valoracion):
+    try:
+        pedido_mgr.eliminarValoracion(id_valoracion)
+        return jsonify({"mensaje": "Valoración eliminada"}), 200
+    except Exception as e:
+        return respond_error(e)
 
-
-# =========================================================
-#                   INICIO DEL SERVIDOR
-# =========================================================
+# -------------------------
+# RUN
+# -------------------------
 if __name__ == "__main__":
     app.run(debug=True)
