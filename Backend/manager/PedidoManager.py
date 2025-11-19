@@ -1,22 +1,88 @@
+# manager/PedidoManager.py
+
 from dao.PedidoDAO import PedidoDAO
-from dao.DetallePedidoDAO import DetallePedidoDAO
+from dao.ProductoDAO import ProductoDAO
 from dao.ValoracionDAO import ValoracionDAO
 
 class PedidoManager:
-    def crearPedido(self, pedido, detalles):
-        id_pedido = PedidoDAO.insertarPedido(pedido)
-        for d in detalles:
-            d["id_pedido"] = id_pedido
-            DetallePedidoDAO.insertarDetallePedido(d)
-        return id_pedido
 
-    def cambiarEstado(self, id_pedido, estado):
-        PedidoDAO.actualizarEstado(id_pedido, estado)
+    # -------------------------
+    #          PEDIDOS
+    # -------------------------
+    @staticmethod
+    def crearPedido(data):
+        return PedidoDAO.insertarPedido(data)
 
-    def agregarValoracion(self, data):
+    @staticmethod
+    def obtenerPedidos():
+        return PedidoDAO.consultarPedidos()
+
+    @staticmethod
+    def obtenerPedido(id_pedido):
+        return PedidoDAO.consultarPedido(id_pedido)
+
+    @staticmethod
+    def actualizarPedido(id_pedido, data):
+        return PedidoDAO.actualizarPedido(id_pedido, data)
+
+    @staticmethod
+    def actualizarPedidoParcial(id_pedido, data):
+        return PedidoDAO.actualizarPedidoParcial(id_pedido, data)
+
+    @staticmethod
+    def eliminarPedido(id_pedido):
+        return PedidoDAO.eliminarPedido(id_pedido)
+
+    # -------------------------
+    #         PRODUCTOS
+    # -------------------------
+    @staticmethod
+    def crearProducto(data):
+        return ProductoDAO.insertarProducto(data)
+
+    @staticmethod
+    def obtenerProductos():
+        return ProductoDAO.consultarProductos()
+
+    @staticmethod
+    def obtenerProducto(id_producto):
+        return ProductoDAO.consultarProducto(id_producto)
+
+    @staticmethod
+    def actualizarProducto(id_producto, data):
+        return ProductoDAO.actualizarProducto(id_producto, data)
+
+    @staticmethod
+    def actualizarProductoParcial(id_producto, data):
+        return ProductoDAO.actualizarProductoParcial(id_producto, data)
+
+    @staticmethod
+    def eliminarProducto(id_producto):
+        return ProductoDAO.eliminarProducto(id_producto)
+
+    # -------------------------
+    #        VALORACIONES
+    # -------------------------
+    @staticmethod
+    def crearValoracion(data):
         return ValoracionDAO.insertarValoracion(data)
 
-    def generarReporte(self):
-        pedidos = PedidoDAO.consultarPedidos()
-        valoraciones = ValoracionDAO.consultarValoraciones()
-        return {"pedidos": pedidos, "valoraciones": valoraciones}
+    @staticmethod
+    def obtenerValoraciones():
+        return ValoracionDAO.consultarValoraciones()
+
+    @staticmethod
+    def obtenerValoracion(id_valoracion):
+        return ValoracionDAO.consultarValoracion(id_valoracion)
+
+    @staticmethod
+    def actualizarValoracion(id_valoracion, data):
+        return ValoracionDAO.actualizarValoracion(id_valoracion, data)
+
+    @staticmethod
+    def actualizarValoracionParcial(id_valoracion, data):
+        return ValoracionDAO.actualizarValoracionParcial(id_valoracion, data)
+
+    @staticmethod
+    def eliminarValoracion(id_valoracion):
+        return ValoracionDAO.eliminarValoracion(id_valoracion)
