@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- Título principal de la página -->
+  <h1 class="mb-1"
+    style="
+        color: #000000;
+        font-family: 'Cinzel', serif;
+        font-weight: 900;
+        font-size: 50px;
+        text-align: center;
+        letter-spacing: 3px;
+        animation: fadeIn 1s ease-in-out;
+        text-shadow: 0 0 12px #ffffff, 0 0 22px #ffffffc5;
+    ">
+    Control total del sistema musical 🎶
+</h1>
+
+<p style="
+        color: #000000;
+        text-align:center;
+        font-family:'Poppins', sans-serif;
+        font-size: 18px;
+        opacity: 0.75;
+        margin-top:-5px;
+        margin-bottom: 20px;
+        animation: fadeInSubtitle 1s ease-in-out;
+    ">
+    Elija lo que guste hacer
+</p>
+
+<style>
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-9px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInSubtitle {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Animación para la lista del menú */
+.menu-item {
+    opacity: 0;
+    animation: fadeIn 0.5s ease forwards;
+}
+
+.menu-item:nth-child(1) { animation-delay: 0.2s; }
+.menu-item:nth-child(2) { animation-delay: 0.35s; }
+.menu-item:nth-child(3) { animation-delay: 0.5s; }
+.menu-item:nth-child(4) { animation-delay: 0.65s; }
+.menu-item:nth-child(5) { animation-delay: 0.8s; }
+
+.menu-item:hover {
+    transform: scale(1.05);
+    transition: 0.3s;
+    background: #644f82;
+    border-radius: 10px;
+}
+</style>
+
+<div style="
+    background: linear-gradient(135deg, #1e1e2f, #3a3a5f);
+    padding: 25px;
+    border-radius: 15px;
+    box-shadow: 0 8px 18px rgba(0,0,0,0.35);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+">
+
+<div style="
+    background: linear-gradient(135deg, #1e1e2f, #3a3a5f);
+    padding: 25px;
+    border-radius: 15px;
+    box-shadow: 0 8px 18px rgba(0,0,0,0.35);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+">
+
+    <div class="list-group">
+
+        <a href="{% url 'productos_list' %}" class="list-group-item list-group-item-action menu-item" style="--i:1">
+            🛒 Productos
+        </a>
+
+        <a href="{% url 'pedidos_list' %}" class="list-group-item list-group-item-action menu-item" style="--i:2">
+            🧾 Pedidos
+        </a>
+
+        <a href="{% url 'usuarios_list' %}" class="list-group-item list-group-item-action menu-item" style="--i:3">
+            👤 Usuarios
+        </a>
+
+        <a href="{% url 'canciones_list' %}" class="list-group-item list-group-item-action menu-item" style="--i:4">
+            🎵 Canciones
+        </a>
+
+        <a href="{% url 'discos_list' %}" class="list-group-item list-group-item-action menu-item" style="--i:5">
+            💿 Discos MP3
+        </a>
+
+        <a href="{% url 'vinilos_list' %}" class="list-group-item list-group-item-action menu-item" style="--i:6">
+            📀 Vinilos
+        </a>
+
+        <a href="{% url 'recopilaciones_list' %}" class="list-group-item list-group-item-action menu-item" style="--i:7">
+            🎶 Recopilaciones
+        </a>
+
+        <a href="{% url 'cancion_vinilo_list' %}" class="list-group-item list-group-item-action menu-item" style="--i:8">
+            🎧 Canciones en Vinilos
+        </a>
+
+        <a href="{% url 'cancion_recopilacion_list' %}" class="list-group-item list-group-item-action menu-item" style="--i:9">
+            🎤 Canciones en Recopilaciones
+        </a>
+
+        <a href="{% url 'valoraciones_list' %}" class="list-group-item list-group-item-action menu-item" style="--i:10">
+            ⭐ Valoraciones
+        </a>
+    </div>
+</div>
+{% endblock %}
