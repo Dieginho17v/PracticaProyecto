@@ -78,6 +78,48 @@
             0% { opacity: 0; transform: translateY(15px); }
             100% { opacity: 1; transform: translateY(0); }
         }
+
+        /* ANIMACIÓN DE APARICIÓN DEL NAVBAR */
+        .navbar {
+            animation: slideDown 0.7s ease-out;
+        }
+
+        @keyframes slideDown {
+            from { transform: translateY(-18px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        /* SUBRAYADO DESLIZANTE EN LOS LINKS */
+        .nav-link {
+            position: relative;
+        }
+
+        .nav-link::after {
+            content: "";
+            position: absolute;
+            bottom: -3px;
+            left: 0;
+            width: 0%;
+            height: 2px;
+            background-color: #9d78ff;
+            transition: width 0.35s ease;
+        }
+
+        .nav-link:hover::after {
+            width: 100%;
+        }
+
+        /* EFECTO DE BRILLO SUAVE EN EL LOGO */
+        .navbar-brand {
+            animation: glow 3s infinite ease-in-out;
+            text-shadow: 0 0 0px #cfc2ff;
+        }
+
+        @keyframes glow {
+            0% { text-shadow: 0 0 0px #cfc2ff; }
+            50% { text-shadow: 0 0 10px #dcd1ff; }
+            100% { text-shadow: 0 0 0px #cfc2ff; }
+        }
     </style>
 </head>
 
